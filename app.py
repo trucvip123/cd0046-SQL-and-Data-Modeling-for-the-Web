@@ -3,19 +3,23 @@
 # ----------------------------------------------------------------------------#
 
 import json
+import logging
 import sys
-import dateutil.parser
+from logging import FileHandler, Formatter
+
 import babel
-from flask import Flask, render_template, request, Response, flash, redirect, url_for, abort
+import dateutil.parser
+from flask import (Flask, Response, abort, flash, redirect, render_template,
+                   request, url_for)
 from flask_migrate import Migrate
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
-import logging
-from logging import Formatter, FileHandler
 from flask_wtf import Form
-from forms import *
 from sqlalchemy.orm import joinedload
-from common.models import Venue, Artist, Show, db
+
+from common.models import Artist, Show, Venue, db
+from common.utils import convert_genres
+from forms import *
 
 # ----------------------------------------------------------------------------#
 # App Config.
@@ -38,6 +42,7 @@ migrate = Migrate(app, db)
 # Filters.
 # ----------------------------------------------------------------------------#
 
+
 def format_datetime(value, format="medium"):
     # If value is already a datetime object, no need to parse
     if isinstance(value, str):
@@ -55,7 +60,7 @@ def format_datetime(value, format="medium"):
         format = "EEEE MMMM d, y 'at' h:mma"
     elif format == "medium":
         format = "EEE MMM d, y h:mma"
-    
+
     # Format the datetime using Babel
     return babel.dates.format_datetime(date, format, locale="en")
 
@@ -75,6 +80,7 @@ def index():
 #  Venues
 #  ----------------------------------------------------------------
 
+
 @app.route("/venues")
 def venues():
     data = []
@@ -82,8 +88,7 @@ def venues():
 
     # Get all venues with related shows
     venueLocList = (
-        Venue.query
-        .distinct(Venue.state, Venue.city)
+        Venue.query.distinct(Venue.state, Venue.city)
         .options(joinedload(Venue.shows))  # Eager load shows to avoid N+1 queries
         .all()
     )
@@ -93,16 +98,14 @@ def venues():
         state = venueLocation.state
 
         venues = []
-        
+
         venueList = Venue.query.filter_by(city=city, state=state).all()
 
         for venue in venueList:
             # Get upcoming shows directly from the database
-            upcomingShowsCount = (
-                Show.query
-                .filter(Show.venue_id == venue.id, Show.start_time > current_time)
-                .count()
-            )
+            upcomingShowsCount = Show.query.filter(
+                Show.venue_id == venue.id, Show.start_time > current_time
+            ).count()
 
             venues.append(
                 {
@@ -151,14 +154,17 @@ def show_venue(venue_id):
     data = {}
 
     try:
+
         venue = Venue.query.filter_by(id=venue_id).first()
+        genres_list = convert_genres(venue.genres)
+
         data["id"] = venue.id
         data["name"] = venue.name
         data["city"] = venue.city
         data["state"] = venue.state
         data["address"] = venue.address
         data["phone"] = venue.phone
-        data["genres"] = venue.genres
+        data["genres"] = genres_list
         data["image_link"] = venue.image_link
         data["facebook_link"] = venue.facebook_link
         data["website"] = venue.website_link
@@ -224,7 +230,7 @@ def create_venue_submission():
     error = False
     form = VenueForm(request.form)
     try:
-        venue = Venue()
+        venue = Venue(genres=form.genres.data)
         form.populate_obj(venue)
         db.session.add(venue)
         db.session.commit()
@@ -314,13 +320,14 @@ def show_artist(artist_id):
 
     try:
         artist = Artist.query.filter_by(id=artist_id).first()
+        genres_list = convert_genres(artist.genres)
 
         data["id"] = artist.id
         data["name"] = artist.name
         data["city"] = artist.city
         data["state"] = artist.state
         data["phone"] = artist.phone
-        data["genres"] = artist.genres
+        data["genres"] = genres_list
         data["image_link"] = artist.image_link
         data["facebook_link"] = artist.facebook_link
         data["website"] = artist.website_link
